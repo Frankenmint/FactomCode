@@ -2,7 +2,9 @@ package notaryapi
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"time"
 
 )
@@ -33,6 +35,13 @@ type EntryInfoBranch struct {
 	EBInfo *EBInfo
 	DBBatch *DBBatch
     
+}
+
+func (e *Entry) Hash() string {
+	bin, _ := e.MarshalBinary()
+	s := sha256.New()
+	s.Write(bin)
+	return hex.EncodeToString(s.Sum(nil))
 }
 
 func (e *Entry) StampTime() {

@@ -47,15 +47,11 @@ func RevealChain(version uint16, c *notaryapi.EChain, e *notaryapi.Entry) error 
 
 // CommitEntry sends a message to the factom network containing a hash of the
 // entry to be used to verify the later RevealEntry.
-func CommitEntry(e *notaryapi.Entry) (err error) {
+func CommitEntry(e *notaryapi.Entry) error {
 	var msg bytes.Buffer
-	binentry, err := e.MarshalBinary()
-	if err != nil {
-		return err
-	}
 
 	binary.Write(&msg, binary.BigEndian, uint64(time.Now().Unix()))
-	msg.Write(binentry)
+	msg.Write([]byte(e.Hash()))
 
 	sig := wallet.SignData(msg.Bytes())
 	// msg.Bytes should be a int64 timestamp followed by a binary entry
@@ -63,10 +59,11 @@ func CommitEntry(e *notaryapi.Entry) (err error) {
 	data := url.Values{
 		"datatype":  {"commitentry"},
 		"format":    {"binary"},
-		"signature": {hex.EncodeToString((*sig.Pub.Key)[:])},
+		"signature": {hex.EncodeToString((*sig.Sig)[:])},
+		"pubkey":	{hex.EncodeToString((*sig.Pub.Key)[:])},
 		"data":      {hex.EncodeToString(msg.Bytes())},
 	}
-	_, err = http.PostForm(serverAddr, data)
+	_, err := http.PostForm(serverAddr, data)
 	if err != nil {
 		return err
 	}
@@ -78,6 +75,9 @@ func CommitEntry(e *notaryapi.Entry) (err error) {
 // will be rejected if a CommitEntry was not done.
 func RevealEntry(e *notaryapi.Entry) error {
 	binentry, err := e.MarshalBinary()
+	if err != nil {
+		return err
+	}
 	data := url.Values{
 		"datatype": {"revealentry"},
 		"format":   {"binary"},
