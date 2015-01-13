@@ -1,20 +1,21 @@
 package factomapi
 
 import (
+	"bytes"
+	"encoding/base64"
+	"encoding/binary"
+	"encoding/hex"
+	"fmt"
+	"github.com/FactomProject/FactomCode/database"
+	//"github.com/FactomProject/FactomCode/database/ldb"
+	"github.com/FactomProject/FactomCode/notaryapi"
+	"github.com/FactomProject/FactomCode/wallet"
+	"io/ioutil"
 	"net/http"
 	"net/url"
-	"fmt"
-	"encoding/hex"	
-	"encoding/base64"		
 	"sort"
-	"github.com/FactomProject/FactomCode/database"	
-	"github.com/FactomProject/FactomCode/notaryapi"		
-	//"github.com/FactomProject/FactomCode/database/ldb"	
-	"strconv"		
-	"io/ioutil"	
-	"bytes"
-	"encoding/binary"	
-
+	"strconv"
+	"time"
 )
 //to be improved:
 var serverAddr = "localhost:8083"	
@@ -43,32 +44,51 @@ func RevealChain(version uint16, c *notaryapi.EChain, e *notaryapi.Entry) error 
 
 	return err
 }
-/*
-func CommitEntry(cid *notaryapi.Hash) (*notaryapi.Entry, error) {
-	e := new(notaryapi.Entry)
-	e.ChainID := cid
-	e.ExtHashes := h
-	e.Data := data
-	
-	return e
+
+// CommitEntry sends a message to the factom network containing a hash of the
+// entry to be used to verify the later RevealEntry.
+func CommitEntry(e *notaryapi.Entry) (err error) {
+	var msg bytes.Buffer
+	binentry, err := e.MarshalBinary()
+	if err != nil {
+		return err
+	}
+
+	binary.Write(&msg, binary.BigEndian, uint64(time.Now().Unix()))
+	msg.Write(binentry)
+
+	sig := wallet.SignData(msg.Bytes())
+	// msg.Bytes should be a int64 timestamp followed by a binary entry
+
+	data := url.Values{
+		"datatype":  {"commitentry"},
+		"format":    {"binary"},
+		"signature": {hex.EncodeToString((*sig.Pub.Key)[:])},
+		"data":      {hex.EncodeToString(msg.Bytes())},
+	}
+	_, err = http.PostForm(serverAddr, data)
+	if err != nil {
+		return err
+	}
+	return nil
 }
-*/
-func RevealEntry(version uint16, e *notaryapi.Entry) error {
-	bEntry,_ := e.MarshalBinary()
 
-	data := url.Values{}
-	data.Set("format", "binary")
-	data.Set("entry", hex.EncodeToString(bEntry)) 
-	
-	
-	fmt.Println("Entry extid[0]:%s", string(e.ExtIDs[0]))
-		
-	server := fmt.Sprintf(`http://%s/v1`, serverAddr)
-	_, err := http.PostForm(server, data)
-
-	return err
+// RevealEntry sends a message to the factom network containing the binary
+// encoded entry for the server to add it to the factom blockchain. The entry
+// will be rejected if a CommitEntry was not done.
+func RevealEntry(e *notaryapi.Entry) error {
+	binentry, err := e.MarshalBinary()
+	data := url.Values{
+		"datatype": {"revealentry"},
+		"format":   {"binary"},
+		"entry":    {hex.EncodeToString(binentry)},
+	}
+	_, err = http.PostForm(serverAddr, data)
+	if err != nil {
+		return err
+	}
+	return nil
 }
-
 
 // This method will be replaced with a Factoid transaction once we have the factoid implementation in place
 func BuyEntryCredit(version uint16, ecPubKey *notaryapi.Hash, from *notaryapi.Hash, value uint64, fee uint64, sig *notaryapi.Signature) error {
