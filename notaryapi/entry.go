@@ -4,18 +4,23 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
+<<<<<<< HEAD
 	"encoding/hex"
 	"time"
+=======
+	//"time"
+>>>>>>> master
 
 )
 
 type Entry struct {
 	ChainID Hash	
+	
 	//ExtHashes []Hash
 	ExtIDs	[][]byte
 	Data []byte
 	
-	timeStamp int64
+	//timeStamp int64
 }
 
 
@@ -37,6 +42,7 @@ type EntryInfoBranch struct {
     
 }
 
+<<<<<<< HEAD
 func (e *Entry) Hash() string {
 	bin, _ := e.MarshalBinary()
 	s := sha256.New()
@@ -44,12 +50,16 @@ func (e *Entry) Hash() string {
 	return hex.EncodeToString(s.Sum(nil))
 }
 
+=======
+/*
+>>>>>>> master
 func (e *Entry) StampTime() {
 	e.timeStamp = time.Now().Unix()
 }
 func (e *Entry) TimeStamp() int64 {
 	return e.timeStamp
 }
+*/
 
 func (e *Entry) MarshalBinary() ([]byte, error) {
 	var buf bytes.Buffer

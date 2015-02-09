@@ -5,11 +5,11 @@ import (
 	"encoding/hex"
 	"encoding/xml"
 	"errors"
-	"flag"
+	//"flag"
 	"fmt"
 	"github.com/FactomProject/FactomCode/notaryapi"
-	"github.com/conformal/btcrpcclient"
-	"github.com/conformal/btcutil"
+	"github.com/FactomProject/btcrpcclient"
+	"github.com/FactomProject/btcutil"
 	"github.com/FactomProject/dynrsrc"
 	"github.com/FactomProject/gobundle"
 	"github.com/FactomProject/gocoding"
@@ -32,8 +32,8 @@ import (
 	"github.com/FactomProject/FactomCode/factomapi"
 	"github.com/FactomProject/FactomCode/wallet"
 
-) 
-
+)  
+ 
 var  (
 	wclient *btcrpcclient.Client	//rpc client for btcwallet rpc server
 	dclient *btcrpcclient.Client	//rpc client for btcd rpc server
@@ -341,7 +341,7 @@ func init() {
 
 
 func main() {
-/*
+/**/
 
 	//addrStr := "muhXX7mXoMZUBvGLCgfjuoY2n2mziYETYC"
 	//addrStr := "movaFTARmsaTMk3j71MpX8HtMURpsKhdra"
@@ -355,9 +355,9 @@ func main() {
 		log.Fatalf("cannot init wallet: %s", err)
 	}
 	//doEntries()
-*/
+
 	
-	flag.Parse()
+	//flag.Parse()
 	defer func() {
 		tickers[0].Stop()
 		tickers[1].Stop()
@@ -450,7 +450,8 @@ func serveRESTfulHTTP(w http.ResponseWriter, r *http.Request) {
 		case "commitchain":
 			var err error
 			pub := new(notaryapi.Hash)
-			chainhash := new(notaryapi.Hash)
+			//chainhash := new(notaryapi.Hash)
+			chainID := new(notaryapi.Hash)			
 			entrychainhash := new(notaryapi.Hash)
 			entryhash := new(notaryapi.Hash)
 
@@ -467,37 +468,92 @@ func serveRESTfulHTTP(w http.ResponseWriter, r *http.Request) {
 				err = notaryapi.CreateError(notaryapi.ErrorVerifySignature, "commitchain Verify failed")
 				break;
  			}
+			
+			data = data[8:]
+			chainID.Bytes = data[:32]
+			data = data[32:]
 
- 			i := 8
-			//timestamp := binary.BigEndian.Uint64(data[:i])
+			entryhash.Bytes = data[:32]
+			data = data[32:]
+						
+			entrychainhash.Bytes = data[:32]
+			data = data[32:]
 
-			chainhash.Bytes = data[i+1:i+32]
-			i = i + 32
+			buf := bytes.NewBuffer(data)
+			var credits int32
+    		err = binary.Read(buf, binary.BigEndian, &credits)
+			if err != nil {
+				fmt.Println("binary credits err:", err.Error())
+			} else { fmt.Println("credits %v",credits)}
 
-			entrychainhash.Bytes = data[i+1:i+32]
-			i = i + 32
 
-			entryhash.Bytes = data[i+1:i+32]
-
-			resource, err = processCommitChain(entryhash, chainhash, entrychainhash, pub, 5)
+			resource, err = processCommitChain(entryhash, chainID, entrychainhash, pub, credits)
 
 			if err != nil {
-				fmt.Println("Error:", err)
+				fmt.Println("Error:", err.Error())
 			}
 
 		case "revealchain":
-			e := new(notaryapi.EChain)
-			bin, err := hex.DecodeString(r.Form.Get("chain"))
+			c := new(notaryapi.EChain)
+			bin, err := hex.DecodeString(r.Form.Get("data"))
 			if err != nil {
-				fmt.Println("hex:", err)
+				fmt.Println("hex:", err.Error())
 			}
-			e.UnmarshalBinary(bin)
-			resource, err = processRevealChain(e)
-			if err != nil {
-				fmt.Println("Error:", err)
+			c.UnmarshalBinary(bin)
+			
+			nerr := new(notaryapi.Error)
+			resource, nerr = processRevealChain(c)
+
+			if nerr != nil {
+				fmt.Println("Error:", nerr.Error())
 			}
 
 		case "commitentry":
+			var err error
+			var credits int32				
+			pub := new(notaryapi.Hash)
+			hash := new(notaryapi.Hash)
+			data, err := hex.DecodeString(r.Form.Get("data"))
+			if err != nil { fmt.Println("hex:data", err) }
+
+			sig, err := hex.DecodeString(r.Form.Get("signature"))
+ 			if err != nil { fmt.Println("hex:signature", err.Error()) }
+
+			pub.Bytes, err = hex.DecodeString(r.Form.Get("pubkey"))
+ 			if err != nil { fmt.Println("hex:pubkey", err.Error()) }
+
+ 			if ( !wallet.VerifySlice(pub.Bytes, data, sig) ) {
+				err = notaryapi.CreateError(notaryapi.ErrorVerifySignature, "commitentry Verify failed")
+				break;
+ 			}
+
+			timestamp := binary.BigEndian.Uint64(data[:8])
+			data = data[8:]
+			hash.Bytes = data[:32]
+			data = data[32:]
+			buf := bytes.NewBuffer(data[:4])
+			err = binary.Read(buf, binary.BigEndian, &credits)
+			if err != nil {
+				fmt.Println("Error:", err.Error())
+			}	
+			resource, err = processCommitEntry(hash, pub, int64(timestamp), credits) 
+			if err != nil {
+				fmt.Println("Error:", err.Error())
+			}
+		case "revealentry":
+			e := new(notaryapi.Entry)
+			bin, err := hex.DecodeString(r.Form.Get("entry"))
+			if err != nil {
+				fmt.Println("hex:", err.Error())
+			}
+			e.UnmarshalBinary(bin)
+			nerr := new(notaryapi.Error)			
+			resource, nerr = processRevealEntry(e)
+			if err  != nil {
+				fmt.Println("Error:", nerr.Error())
+			}
+			
+		case "commitentry2":
 			var err error
 			pub := new(notaryapi.Hash)
 			hash := new(notaryapi.Hash)
@@ -505,10 +561,10 @@ func serveRESTfulHTTP(w http.ResponseWriter, r *http.Request) {
 			if err != nil { fmt.Println("hex:data", err) }
 
 			sig, err := hex.DecodeString(r.Form.Get("signature"))
- 			if err != nil { fmt.Println("hex:signature", err) }
+ 			if err != nil { fmt.Println("hex:signature", err.Error()) }
 
 			pub.Bytes, err = hex.DecodeString(r.Form.Get("pubkey"))
- 			if err != nil { fmt.Println("hex:pubkey", err) }
+ 			if err != nil { fmt.Println("hex:pubkey", err.Error()) }
 
  			if ( !wallet.VerifySlice(pub.Bytes, data, sig) ) {
 				err = notaryapi.CreateError(notaryapi.ErrorVerifySignature, "commitentry Verify failed")
@@ -519,19 +575,19 @@ func serveRESTfulHTTP(w http.ResponseWriter, r *http.Request) {
 			hash.Bytes = data[8:]
 			resource, err = processCommitEntry(hash, pub, int64(timestamp), 1) // needs the credits from client ??
 			if err != nil {
-				fmt.Println("Error:", err)
+				fmt.Println("Error:", err.Error())
 			}
-		case "revealentry":
+		case "revealentry2":
 			e := new(notaryapi.Entry)
 			bin, err := hex.DecodeString(r.Form.Get("entry"))
 			if err != nil {
-				fmt.Println("hex:", err)
+				fmt.Println("hex:", err.Error())
 			}
 			e.UnmarshalBinary(bin)
 			resource, err = processRevealEntry(e)
 			if err != nil {
-				fmt.Println("Error:", err)
-			}
+				fmt.Println("Error:", err.Error())
+			}			
 		// (commit|reveal)chain
 		case "chain":
 			resource, err = postChain("/"+strings.Join(path, "/"), form)
@@ -561,7 +617,8 @@ func serveRESTfulHTTP(w http.ResponseWriter, r *http.Request) {
 			http.ServeFile(w, r, dataStorePath + "csv/"+filename)
 			return							
 		default:
-			resource, err = postEntry("/"+strings.Join(path, "/"), form)
+			err = notaryapi.CreateError(notaryapi.ErrorBadMethod, fmt.Sprintf(`The %s datatype is not supported`, datatype))
+			return
 	}
 
 	default:
@@ -765,7 +822,6 @@ func processBuyEntryCredit(pubKey *notaryapi.Hash, credits int32, factoidTxHash 
 }
 
 func processRevealChain(newChain *notaryapi.EChain) ([]byte, *notaryapi.Error) {
-
 	// Check if the chain id already exists
 	_, existing := chainIDMap[newChain.ChainID.String()]
 	if !existing {
@@ -812,9 +868,11 @@ func processRevealChain(newChain *notaryapi.EChain) ([]byte, *notaryapi.Error) {
 	newChain.BlockMutex.Lock()	
 	err := newChain.Blocks[len(newChain.Blocks)-1].AddEBEntry(newChain.FirstEntry)
 	newChain.BlockMutex.Unlock()	
+
 	if err != nil {
 		return nil, notaryapi.CreateError(notaryapi.ErrorInternal, fmt.Sprintf(`Error while adding the First Entry to Block: %s`, err.Error()))
 	}
+
 	ExportDataFromDbToFile()
 	
 	return newChain.ChainID.Bytes, nil	
@@ -1055,7 +1113,7 @@ func ExportDbToFile(dbHash *notaryapi.Hash) {
 	}
 	
 	//write the records to a csv file: 
-	filename := time.Now().Format(time.RFC3339) + "." + dbHash.String() + ".csv"
+	filename := fmt.Sprintf("%v." + dbHash.String() + ".csv", time.Now().Unix())
 	file, err := os.Create(dataStorePath+"csv/" + filename)
 	
 	if err != nil {panic(err)}
@@ -1066,7 +1124,7 @@ func ExportDbToFile(dbHash *notaryapi.Hash) {
 	
  	if err != nil{
  		log.Println(err)
- 		return
+ 		return 
  	}
  	
     for key, value := range ldbMap{
@@ -1087,7 +1145,7 @@ func ExportDataFromDbToFile() {
 	}
 	
 	//write the records to a csv file: 
-	filename := time.Now().Format(time.RFC3339) + ".supportdata.csv"
+	filename := fmt.Sprintf("%v.supportdata.csv",time.Now().Unix())
 	file, err := os.Create(dataStorePath+"csv/"  + filename)
 	if err != nil {panic(err)}
     defer file.Close()

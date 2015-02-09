@@ -6,10 +6,11 @@ import (
 	"encoding/binary"
 
 	"github.com/FactomProject/FactomCode/notaryapi"
-	"github.com/conformal/goleveldb/leveldb"	
+	"github.com/FactomProject/goleveldb/leveldb"	
 	"log"
-	"github.com/conformal/goleveldb/leveldb/util"	
+	"github.com/FactomProject/goleveldb/leveldb/util"	
 	"strings"
+	"time"
 )
 
 
@@ -33,7 +34,7 @@ func (db *LevelDb) InsertEntryAndQueue(entrySha *notaryapi.Hash, binaryEntry *[]
 	key = append(key, *chainID ...) 									// Chain id (32 bytes)
 	
 	binaryTimestamp := make([]byte, 8)
-	binary.BigEndian.PutUint64(binaryTimestamp, uint64(entry.TimeStamp()))	
+	binary.BigEndian.PutUint64(binaryTimestamp, uint64(time.Now().Unix()))	
 	key = append(key, binaryTimestamp ...) 								// Timestamp (8 bytes)
 	
 	key = append(key, entrySha.Bytes ...) 								// Entry Hash (32 bytes)
